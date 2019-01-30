@@ -1,0 +1,3 @@
+ftfy==5.5.1
+pycountry==18.12.8
+wcwidth==0.1.7
