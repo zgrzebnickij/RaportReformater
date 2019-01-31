@@ -12,20 +12,24 @@ from operator import attrgetter
 Record = namedtuple('Record', 'date, state, impressions, CTR')
 RecordCountry = namedtuple('RecordCountry', 'date, country, impressions, CTR')
 
-class Reporter():
-  '''
-  Input format: UTF-8 or UTF-16 CSV file (with any kind of line endings), with columns: date
-  (MM/DD/YYYY), state name, number of impressions and CTR percentage.
 
-  Output format: UTF-8 CSV file with Unix line endings, with columns: date (YYYY-MM-DD),
-  three letter country code (or XXX for unknown states), number of impressions, number of
-  clicks (rounded, assuming the CTR is exact). Rows are sorted lexicographically by date
+class Reporter():
+  '''Input format: UTF-8 or UTF-16 CSV file (with any kind of line endings),
+   with columns: date(MM/DD/YYYY), state name, number of
+   impressions and CTR percentage.
+
+  Output format: UTF-8 CSV file with Unix line endings,
+  with columns: date (YYYY-MM-DD), three letter country code
+  (or XXX for unknown states), number of impressions, number of
+  clicks (rounded, assuming the CTR is exact).
+  Rows are sorted lexicographically by date
   followed by the country code.
   '''
   def __init__(self):
     self.Records = []
+    self.output = []
 
-  def isFormatOk(self,row):
+  def isFormatOk(self, row):
     """
     Check if provided data has right format.
     If not return False.
@@ -45,7 +49,6 @@ class Reporter():
         raise ValueError
     except ValueError as e:
       print(f"Wrong format of provided data {row}", file=sys.stderr)
-      pass
       return False
     return Record(date=date, state=state, impressions=impressions, CTR=CTR)
     
@@ -59,7 +62,7 @@ class Reporter():
       try:
         for row in reader:
           formated = self.isFormatOk(row)
-          print(formated)
+          #print(formated)
           if formated:
             self.Records.append(formated)
       except csv.Error as e:
@@ -67,15 +70,20 @@ class Reporter():
 
   def findCountryCode(self):
     """
-    Change state into country code
-    records change their data type
+    Change state into country code.
+    Records change their data type. 
+    The way it could be done depends on the number of records.
+    It is faster to iterate over the database and check
+    if something match with less records.
+    I though also about making function that check database,
+    but it will work only if number of records are bigger than the database   
     """
     RecordsWithCountry = []
     for state in pycountry.subdivisions:
       #print(state.name)
       for record in self.Records:      
         if state.name == record.state:
-          print(state.country, record.state)
+          #print(state.country, record.state)
           r = RecordCountry(date=record.date,
                             country=state.country.alpha_3,
                             impressions=record.impressions,
@@ -83,7 +91,6 @@ class Reporter():
           self.Records.remove(record)
           RecordsWithCountry.append(r)
     for record in self.Records: 
-      print(record)
       r = RecordCountry(date=record.date,
                             country="XXX",
                             impressions=record.impressions,
@@ -91,28 +98,52 @@ class Reporter():
       RecordsWithCountry.append(r)
     self.Records = RecordsWithCountry
 
-  def reformat(self):
+  def saveCSV(self):
+    with open('raportByCountry.csv', 'w', newline='', encoding='utf-8') as csvfile:
+      writer = csv.writer(csvfile)
+      writer.writerows(self.output)
+      self.output = []
+
+  def reformatAndSave(self):
+    """
+    reformat data to output format:
+    UTF-8 CSV file with Unix line endings,
+    with columns: date (YYYY-MM-DD), three letter country code
+    (or XXX for unknown states), number of impressions, number of
+    clicks (rounded, assuming the CTR is exact).
+    Rows are sorted lexicographically by date
+    followed by the country code.
+    """
     self.Records.sort(key=attrgetter('country'))
     self.Records.sort(key=attrgetter('date'))
     lastDate, impresions, clicks, country = None, 0, 0, ""
-    print(len(self.Records))
+    self.output = []
     for record in self.Records:
       #print(record)
       if country and (record.date != lastDate or record.country != country):
-        print(lastDate, country, impresions, round(clicks/100))
+        self.output.append((lastDate, country, impresions, round(clicks/100)))
         impresions = 0
         clicks = 0
       lastDate = record.date
       impresions += record.impressions
       clicks +=record.impressions*record.CTR
       country = record.country
-    print(lastDate, country, impresions, round(clicks/100))
+    self.output.append((lastDate, country, impresions, round(clicks/100)))
+    self.saveCSV()
+
+  def run(self, file):
+    """Run the process
+    1. load and check format
+    2. find country code
+    3. reformat and save
+    """
+    self.loadReport(file)
+    self.findCountryCode()
+    self.reformatAndSave()
 
 
 if __name__ == "__main__":
   r = Reporter()
-  r.loadReport("raport.csv")
-  r.findCountryCode()
-  r.reformat()
+  r.run("raport.csv")
 
 
